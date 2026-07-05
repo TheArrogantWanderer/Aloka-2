@@ -7,8 +7,9 @@ const LS = {
 };
 
 const NEWS_API_KEY = "63yp_VLo0Fu-wEDdVOJvMpY4-KkMYHHnUjGrDUbfwoUgivXo";
-const CATEGORIES = ["All","World","Tech","Business","Politics","Sport","Health","Science","Entertainment"];
+const CATEGORIES = ["All","Breaking","World","Tech","Business","Politics","Sport","Health","Science","Entertainment"];
 const CATEGORY_MAP = { "World":"general","Tech":"science_technology","Business":"economy_business_finance","Politics":"politics_government","Sport":"sport","Health":"health","Science":"science_technology","Entertainment":"arts_culture_entertainment" };
+const BREAKING_WINDOW_MS = 2 * 60 * 60 * 1000; // 2 hours
 const BIAS_COLORS = { "Centre":"#F5A623","Centre-Left":"#6B9FD4","Centre-Right":"#D47B6B","Left":"#4A7FB5","Right":"#B54A4A" };
 const SOURCE_BIAS = { "BBC News":"Centre","Reuters":"Centre","Associated Press":"Centre","The Guardian":"Centre-Left","CNN":"Centre-Left","MSNBC":"Left","Fox News":"Right","The New York Times":"Centre-Left","The Washington Post":"Centre-Left","The Wall Street Journal":"Centre-Right","NPR":"Centre-Left","Al Jazeera":"Centre","The Economist":"Centre","Financial Times":"Centre","Sky News":"Centre","NBC News":"Centre-Left","ABC News":"Centre","CBS News":"Centre" };
 
@@ -354,7 +355,7 @@ export default function AlokaApp() {
   const [toast,setToast]=useState(null);
   const [user,setUser]=useState(()=>LS.get("aloka_user",null));
   const [authModal,setAuthModal]=useState(null);
-  const [enabledCategories,setEnabledCategories]=useState(()=>LS.get("aloka_cats",["World","Tech","Business","Politics","Sport","Health","Science","Entertainment"]));
+  const [enabledCategories,setEnabledCategories]=useState(()=>LS.get("aloka_cats",["Breaking","World","Tech","Business","Politics","Sport","Health","Science","Entertainment"]));
   const [displayPrefs,setDisplayPrefs]=useState(()=>LS.get("aloka_prefs",{showBiasLabels:true,paywallFreeOnly:true}));
   const [textSize,setTextSize]=useState(()=>LS.get("aloka_textsize","Medium"));
   const [readerArticle,setReaderArticle]=useState(null);
@@ -371,19 +372,28 @@ export default function AlokaApp() {
 
   const fetchBatch=useCallback(async(category,existingIds)=>{
     try {
-      const cat=category==="All"?null:CATEGORY_MAP[category];
+      // Breaking: fetch general news across all categories, filter to last 2 hours
+      const isBreaking = category === "Breaking";
+      const cat = isBreaking ? null : (category==="All"?null:CATEGORY_MAP[category]);
       const apiUrl=`https://api.currentsapi.services/v1/latest-news?apiKey=${NEWS_API_KEY}&language=en${cat?`&category=${cat}`:""}`;
       const proxyUrl=`https://api.allorigins.win/get?url=${encodeURIComponent(apiUrl)}`;
       const res=await fetch(proxyUrl,{signal:AbortSignal.timeout(10000)});
       const outer=await res.json();
       const data=JSON.parse(outer.contents);
       if(data.status==="ok"&&data.news?.length>0){
-        const formatted=data.news.filter(a=>a.title&&a.title!=="[Removed]").map(a=>formatArticle(a,category==="All"?"World":category));
+        let news = data.news.filter(a=>a.title&&a.title!=="[Removed]");
+        if(isBreaking){
+          const cutoff = Date.now() - BREAKING_WINDOW_MS;
+          news = news.filter(a => a.published && new Date(a.published).getTime() > cutoff);
+        }
+        const formatted=news.map(a=>formatArticle(a, isBreaking?"Breaking":category==="All"?"World":category));
         const deduped=dedupeArticles(formatted,existingIds);
         if(deduped.length>0)return{items:deduped,live:true};
       }
     } catch(_){}
-    const mock=dedupeArticles((MOCK_DATA[category]||MOCK_DATA["All"]).map(a=>({...a})),existingIds);
+    // Breaking fallback: use All mock data filtered to simulate recency
+    const mockCat = category==="Breaking"?"All":category;
+    const mock=dedupeArticles((MOCK_DATA[mockCat]||MOCK_DATA["All"]).map(a=>({...a})),existingIds);
     return{items:mock,live:false};
   },[]);
 
@@ -399,7 +409,7 @@ export default function AlokaApp() {
   useEffect(()=>{
     if(loading||fetchingMore)return;
     if(articles.length-cursor>3)return;
-    const rotation=["World","Tech","Business","Politics","Sport","Health","Science","Entertainment"];
+    const rotation=["World","Tech","Business","Politics","Sport","Health","Science","Entertainment"]; // Breaking excluded from auto-rotation
     setFetchingMore(true);
     (async()=>{
       const existingIds=articles.map(a=>a.id);
@@ -458,9 +468,23 @@ export default function AlokaApp() {
       {/* HOME */}
       {activeTab==="home"&&<>
         <div style={{display:"flex",gap:8,padding:"14px 20px",overflowX:"auto",scrollbarWidth:"none",borderBottom:"1px solid #1A1A1A"}}>
-          {CATEGORIES.map(cat=>(
-            <button key={cat} onClick={()=>setActiveCategory(cat)} style={{flexShrink:0,padding:"6px 14px",borderRadius:20,border:"none",background:activeCategory===cat?"#F5A623":"#1A1A1A",color:activeCategory===cat?"#000":"#666",fontSize:12,fontWeight:600,cursor:"pointer",transition:"all 0.2s",fontFamily:"'Inter',sans-serif"}}>{cat}</button>
-          ))}
+          {CATEGORIES.map(cat=>{
+            const isBreakingTab = cat === "Breaking";
+            const isActive = activeCategory === cat;
+            return (
+              <button key={cat} onClick={()=>setActiveCategory(cat)} style={{
+                flexShrink:0, padding:"6px 14px", borderRadius:20, border:"none",
+                background: isActive ? (isBreakingTab ? "#FF3B30" : "#F5A623") : (isBreakingTab ? "rgba(255,59,48,0.15)" : "#1A1A1A"),
+                color: isActive ? "#fff" : (isBreakingTab ? "#FF3B30" : "#666"),
+                fontSize:12, fontWeight: isBreakingTab ? 700 : 600,
+                cursor:"pointer", transition:"all 0.2s", fontFamily:"'Inter',sans-serif",
+                display:"flex", alignItems:"center", gap:5,
+              }}>
+                {isBreakingTab && <span style={{width:6,height:6,borderRadius:"50%",background: isActive ? "#fff" : "#FF3B30",display:"inline-block",animation:"breakingPulse 1.2s ease-in-out infinite"}}/>}
+                {cat}
+              </button>
+            );
+          })}
         </div>
         <div style={{flex:1,padding:"16px 20px 110px"}}>
           <div style={{display:"flex",justifyContent:"space-between",padding:"0 8px",marginBottom:10}}>
@@ -588,7 +612,7 @@ export default function AlokaApp() {
         <div style={{marginBottom:12}}>
           <p style={{fontSize:11,fontWeight:700,color:"#F5A623",letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:14}}>About</p>
           <div style={{background:"#1A1A1A",borderRadius:14,padding:20,border:"1px solid #222"}}>
-            {[["App","Aloka"],["Version","0.7.0 Beta"],["Tagline","News, clearly."],["Name origin","Sinhala — light"]].map(([k,v])=>(
+            {[["App","Aloka"],["Version","0.8.0 Beta"],["Tagline","News, clearly."],["Name origin","Sinhala — light"]].map(([k,v])=>(
               <div key={k} style={{display:"flex",justifyContent:"space-between",marginBottom:10}}><span style={{fontSize:13,color:"#888"}}>{k}</span><span style={{fontSize:13,color:k==="Tagline"?"#F5A623":"#fff",fontWeight:600,fontStyle:k==="Tagline"?"italic":"normal"}}>{v}</span></div>
             ))}
           </div>
@@ -612,6 +636,7 @@ export default function AlokaApp() {
         ::-webkit-scrollbar { display: none; }
         @keyframes fadeIn { from{opacity:0;transform:translateX(-50%) translateY(-8px);}to{opacity:1;transform:translateX(-50%) translateY(0);} }
         @keyframes pulse { 0%,100%{opacity:0.3}50%{opacity:0.7} }
+        @keyframes breakingPulse { 0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.5;transform:scale(0.7)} }
       `}</style>
     </div>
   );
