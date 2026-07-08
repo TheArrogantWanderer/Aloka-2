@@ -265,6 +265,26 @@ function ReaderView({article, onClose, onSave}) {
   const [byline,setByline]=useState(null);
   const [imgError,setImgError]=useState(false);
 
+  // Swipe-to-close
+  const swipeStartX=useRef(null);
+  const swipeCurrX=useRef(0);
+  const [swipeOffset,setSwipeOffset]=useState(0);
+  const [swiping,setSwiping]=useState(false);
+
+  const onSwipeStart=(x)=>{ swipeStartX.current=x; setSwiping(true); };
+  const onSwipeMove=(x)=>{
+    if(!swiping||swipeStartX.current===null) return;
+    const d=x-swipeStartX.current;
+    if(d<0){ swipeCurrX.current=0; setSwipeOffset(0); return; }
+    swipeCurrX.current=d; setSwipeOffset(d);
+  };
+  const onSwipeEnd=()=>{
+    setSwiping(false);
+    if(swipeCurrX.current>110) onClose();
+    else setSwipeOffset(0);
+    swipeCurrX.current=0;
+  };
+
   useEffect(()=>{
     if(!article)return;
     setFullText(null);setByline(null);setExtracting(true);
@@ -279,8 +299,21 @@ function ReaderView({article, onClose, onSave}) {
 
   if(!article)return null;
 
+  const swipeProgress=Math.min(swipeOffset/200,1);
+
   return (
-    <div style={{position:"fixed",inset:0,background:"#0D0D0D",zIndex:600,display:"flex",flexDirection:"column",maxWidth:420,margin:"0 auto"}}>
+    <div
+      onMouseDown={e=>onSwipeStart(e.clientX)} onMouseMove={e=>onSwipeMove(e.clientX)} onMouseUp={onSwipeEnd} onMouseLeave={onSwipeEnd}
+      onTouchStart={e=>onSwipeStart(e.touches[0].clientX)} onTouchMove={e=>onSwipeMove(e.touches[0].clientX)} onTouchEnd={onSwipeEnd}
+      style={{position:"fixed",inset:0,background:"#0D0D0D",zIndex:600,display:"flex",flexDirection:"column",maxWidth:420,margin:"0 auto",
+        transform:`translateX(${swipeOffset}px)`,
+        transition:swiping?"none":"transform 0.3s cubic-bezier(0.34,1.56,0.64,1)",
+        opacity:1-swipeProgress*0.3,
+      }}>
+      {/* Swipe back hint */}
+      {swipeOffset>20&&(
+        <div style={{position:"absolute",left:16,top:"50%",transform:"translateY(-50%)",background:"#F5A623",color:"#000",padding:"8px 16px",borderRadius:20,fontSize:12,fontWeight:700,zIndex:10,opacity:Math.min(1,swipeProgress*3),pointerEvents:"none"}}>← Back</div>
+      )}
       {/* Header */}
       <div style={{padding:"52px 20px 16px",borderBottom:"1px solid #1A1A1A",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
         <button onClick={onClose} style={{background:"#1A1A1A",border:"1px solid #2A2A2A",borderRadius:"50%",width:36,height:36,color:"#fff",fontSize:18,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
