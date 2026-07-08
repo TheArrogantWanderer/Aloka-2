@@ -194,8 +194,8 @@ function NewsCard({article, onSkip, onRead, onSave, isTop, stackIndex}) {
   const swipeDir=offset>60?"read":offset<-60?"skip":null;
   const stackStyles={
     0:{transform:`translateX(${offset}px) rotate(${rotation}deg)`,zIndex:10,opacity:Math.max(0.3,1-Math.abs(offset)/300)},
-    1:{transform:"translateY(12px) scale(0.97)",zIndex:9,opacity:0.85},
-    2:{transform:"translateY(24px) scale(0.94)",zIndex:8,opacity:0.6},
+    1:{transform:"translateX(0) rotate(0deg)",zIndex:9,opacity:0.55,pointerEvents:"none"},
+    2:{transform:"translateX(0) rotate(0deg)",zIndex:8,opacity:0.25,pointerEvents:"none"},
   };
 
   const hasImage = article.image && !imgError;
@@ -254,6 +254,114 @@ function NewsCard({article, onSkip, onRead, onSave, isTop, stackIndex}) {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+
+// ── Article Body — rich typography renderer ────────────────────────────────
+function ArticleBody({ text }) {
+  if (!text) return null;
+
+  const paragraphs = text
+    .split("\n\n")
+    .map(p => p.trim())
+    .filter(p => p.length > 0);
+
+  // Detect if a paragraph is likely a pull quote candidate:
+  // short, punchy, ends without a period or with an exclamation/question
+  const isPullQuote = (p, i) => {
+    if (i === 0) return false; // never pull quote the standfirst
+    const words = p.split(" ").length;
+    return words >= 8 && words <= 30 && (p.endsWith("!") || p.endsWith("?") || (words <= 20 && !p.endsWith(".")));
+  };
+
+  // Detect likely section break: very short line (subheading-like)
+  const isSectionBreak = (p) => {
+    const words = p.split(" ").length;
+    return words <= 6 && p === p.toUpperCase() || (words <= 8 && !p.includes(",") && !p.endsWith(".") && p.length < 60);
+  };
+
+  // Track pull quotes so we don't show more than 2
+  let pullQuoteCount = 0;
+
+  return (
+    <div style={{ marginBottom: 28 }}>
+      {paragraphs.map((para, i) => {
+        // Standfirst — first paragraph, larger and lighter
+        if (i === 0) {
+          return (
+            <p key={i} style={{
+              fontSize: 20,
+              lineHeight: 1.7,
+              color: "#E0E0E0",
+              margin: "0 0 24px",
+              fontFamily: "'Playfair Display', Georgia, serif",
+              fontWeight: 400,
+              letterSpacing: "-0.01em",
+              borderLeft: "3px solid #F5A623",
+              paddingLeft: 16,
+            }}>{para}</p>
+          );
+        }
+
+        // Section break — style as a subheading
+        if (isSectionBreak(para)) {
+          return (
+            <div key={i} style={{ margin: "28px 0 16px" }}>
+              <div style={{ height: 1, background: "#1A1A1A", marginBottom: 16 }} />
+              <p style={{
+                fontSize: 11,
+                fontWeight: 700,
+                color: "#F5A623",
+                letterSpacing: "0.1em",
+                textTransform: "uppercase",
+                margin: 0,
+                fontFamily: "'Inter', sans-serif",
+              }}>{para}</p>
+            </div>
+          );
+        }
+
+        // Pull quote — max 2 per article
+        if (isPullQuote(para, i) && pullQuoteCount < 2) {
+          pullQuoteCount++;
+          return (
+            <blockquote key={i} style={{
+              margin: "24px 0",
+              padding: "16px 20px",
+              background: "rgba(245,166,35,0.06)",
+              borderLeft: "3px solid #F5A623",
+              borderRadius: "0 12px 12px 0",
+            }}>
+              <p style={{
+                fontSize: 18,
+                lineHeight: 1.6,
+                color: "#F5A623",
+                margin: 0,
+                fontFamily: "'Playfair Display', Georgia, serif",
+                fontStyle: "italic",
+                fontWeight: 400,
+              }}>{para}</p>
+            </blockquote>
+          );
+        }
+
+        // Short paragraph — give more breathing room
+        const isShort = para.split(" ").length < 20;
+
+        // Regular paragraph
+        return (
+          <p key={i} style={{
+            fontSize: 16,
+            lineHeight: 1.8,
+            color: "#BBBBBB",
+            margin: isShort ? "0 0 20px" : "0 0 16px",
+            fontFamily: "'Inter', sans-serif",
+            fontWeight: 400,
+          }}>{para}</p>
+        );
+      })}
     </div>
   );
 }
@@ -349,14 +457,10 @@ function ReaderView({article, onClose, onSave}) {
               <p style={{fontSize:12,color:"#444",marginTop:12,textAlign:"center"}}>Loading full article…</p>
             </div>
           ):fullText?(
-            <div style={{marginBottom:24}}>
-              {fullText.split("\n\n").map((para,i)=>(
-                <p key={i} style={{fontSize:16,lineHeight:1.75,color:"#CCC",margin:"0 0 16px",fontFamily:"'Inter',sans-serif"}}>{para}</p>
-              ))}
-            </div>
+            <ArticleBody text={fullText}/>
           ):(
             <div style={{marginBottom:24}}>
-              {article.description&&<p style={{fontSize:16,lineHeight:1.75,color:"#CCC",margin:"0 0 16px",fontFamily:"'Inter',sans-serif"}}>{article.description}</p>}
+              {article.description&&<p style={{fontSize:17,lineHeight:1.8,color:"#CCC",margin:"0 0 20px",fontFamily:"'Inter',sans-serif",fontWeight:400}}>{article.description}</p>}
               <div style={{background:"rgba(245,166,35,0.07)",border:"1px solid rgba(245,166,35,0.2)",borderRadius:12,padding:14}}>
                 <p style={{fontSize:12,color:"#AAA",margin:0,lineHeight:1.5}}>⚠ Aloka couldn't pull the full text from this source. Tap below to read it on the original site.</p>
               </div>
